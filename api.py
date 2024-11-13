@@ -1,256 +1,267 @@
 import random
-from flask import Flask, jsonify, render_template, request
-import datetime
+from sqlite3 import IntegrityError, OperationalError
+import time
+from flask import Flask, jsonify, request
 from flask_cors import CORS
+from sqlalchemy import create_engine, Column, Integer, String
+import sqlalchemy
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import Session
+import bcrypt  # Para encriptar la nueva contraseña
 
-# Importar transbank solo si es necesario
-# from transbank.error.transbank_error import TransbankError
-# from transbank.webpay.webpay_plus.transaction import Transaction
 
+
+# Initialize Flask app and CORS
 api = Flask(__name__)
 CORS(api, resources={r"/api/*": {"origins": "*"}})
 
-def get_current_datetime():
-    return datetime.datetime.utcnow().isoformat()
-
-# Base de datos simulada de productos (lista de diccionarios)
-gatitos = [
-    {
-        "id": 1,
-        "name": "Mittens",
-        "breed": "British Shorthair",
-        "age": 4,
-        "birthdate": "2019-02-11",
-        "description": "Un gatito británico de pelaje corto, amable y cariñoso."
-    },
-    {
-        "id": 2,
-        "name": "Pumpkin",
-        "breed": "Tabby",
-        "age": 2,
-        "birthdate": "2021-10-29",
-        "description": "Un juguetón gatito atigrado que ama cazar sombras."
-    },
-    {
-        "id": 3,
-        "name": "Smokey",
-        "breed": "Russian Blue",
-        "age": 3,
-        "birthdate": "2020-08-15",
-        "description": "Un silencioso y elegante gatito ruso de pelaje azul."
-    },
-    {
-        "id": 4,
-        "name": "Luna",
-        "breed": "Sphynx",
-        "age": 1,
-        "birthdate": "2022-04-05",
-        "description": "Una gatita curiosa y sin pelo, muy sociable y activa."
-    },
-    {
-        "id": 5,
-        "name": "Oscar",
-        "breed": "Bengal",
-        "age": 5,
-        "birthdate": "2018-07-21",
-        "description": "Un bengalí aventurero que disfruta trepar y explorar."
-    },
-    {
-        "id": 6,
-        "name": "Milo",
-        "breed": "Ragdoll",
-        "age": 3,
-        "birthdate": "2020-01-13",
-        "description": "Un gatito dócil y amoroso que disfruta estar en brazos."
-    },
-    {
-        "id": 7,
-        "name": "Ziggy",
-        "breed": "Scottish Fold",
-        "age": 2,
-        "birthdate": "2021-05-30",
-        "description": "Un Scottish Fold de orejas dobladas, siempre observador."
-    },
-    {
-        "id": 8,
-        "name": "Nala",
-        "breed": "Calico",
-        "age": 4,
-        "birthdate": "2019-11-12",
-        "description": "Una gatita calico de pelaje colorido y personalidad única."
-    },
-    {
-        "id": 9,
-        "name": "Felix",
-        "breed": "Bombay",
-        "age": 3,
-        "birthdate": "2020-03-17",
-        "description": "Un gatito negro de mirada intensa y carácter juguetón."
-    },
-    {
-        "id": 10,
-        "name": "Simba",
-        "breed": "Abyssinian",
-        "age": 2,
-        "birthdate": "2021-06-24",
-        "description": "Un gatito abisinio enérgico que ama correr y explorar."
-    }
-]
-# Base de datos simulada de perfiles (lista de diccionarios)
-usuarios = [
-    {
-        "ID": 1,
-        "NOMBRE": "Usuario de Prueba",
-        "RUT": "12345678-9",
-        "CORREO": "prueba@ejemplo.com",
-        "CONTRASENA": "1234",
-        "TIPO_PERFIL": 1,
-        "DIRECCIÓN": "Calle Falsa 123",
-        "REGIÓN": "Región Metropolitana",
-        "COMUNA": "Santiago"
-    },
-    {
-        "ID": 2,
-        "NOMBRE": "Ana Perez",
-        "RUT": "23456789-0",
-        "CORREO": "ana.perez@ejemplo.com",
-        "CONTRASENA": "abcd1234",
-        "TIPO_PERFIL": 2,
-        "DIRECCIÓN": "Avenida Siempre Viva 456",
-        "REGIÓN": "Región de Valparaíso",
-        "COMUNA": "Valparaíso"
-    },
-    {
-        "ID": 3,
-        "NOMBRE": "Carlos Lopez",
-        "RUT": "34567890-1",
-        "CORREO": "carlos.lopez@ejemplo.com",
-        "CONTRASENA": "efgh5678",
-        "TIPO_PERFIL": 3,
-        "DIRECCIÓN": "Calle Principal 789",
-        "REGIÓN": "Región del Biobío",
-        "COMUNA": "Concepción"
-    },
-    {
-        "ID": 4,
-        "NOMBRE": "Maria Gonzalez",
-        "RUT": "45678901-2",
-        "CORREO": "maria.gonzalez@ejemplo.com",
-        "CONTRASENA": "ijkl9101",
-        "TIPO_PERFIL": 4,
-        "DIRECCIÓN": "Pasaje Central 1011",
-        "REGIÓN": "Región de la Araucanía",
-        "COMUNA": "Temuco"
-    },
-    {
-        "ID": 5,
-        "NOMBRE": "Jorge Martinez",
-        "RUT": "56789012-3",
-        "CORREO": "jorge.martinez@ejemplo.com",
-        "CONTRASENA": "mnop1213",
-        "TIPO_PERFIL": 5,
-        "DIRECCIÓN": "Camino Real 1213",
-        "REGIÓN": "Región de Los Lagos",
-        "COMUNA": "Puerto Montt"
-    }
-]
+from sqlalchemy import create_engine
+engine = create_engine('sqlite:///database.db', connect_args={'timeout': 15})
+Session = sessionmaker(bind=engine)
+engine = create_engine("sqlite:///database.db", connect_args={"timeout": 10})
 
 
+# Configure SQLite database
+DATABASE_URL = "sqlite:///C:/SQLite/database.db" # SQLite database file
+engine = create_engine(DATABASE_URL, echo=True)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
 
-# Obtener todos los gatitos (GET)
+# Define usuarios model based on your existing usuarioss structure
+
+class Gatito(Base):
+    __tablename__ = "gatitos"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String, nullable=False)
+    breed = Column(String, nullable=False)
+    age = Column(Integer, nullable=False)
+    birthdate = Column(String, nullable=True)  # Adjust as needed
+    description = Column(String, nullable=True)
+
+     # Convert model to dictionary for JSON serialization
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'breed': self.breed,
+            'age': self.age,
+            'birthdate': self.birthdate,
+            'description': self.description
+        }
+
+class Profile(Base):
+    __tablename__ = "Profiles"
+    
+    ID = Column(Integer, primary_key=True, index=True)
+    NOMBRE = Column(String, nullable=False)
+    RUT = Column(String, nullable=False)
+    CORREO = Column(String, unique=True, nullable=False)
+    CONTRASENA = Column(String, nullable=False)
+    TIPO_PERFIL = Column(Integer, nullable=False)
+    DIRECCION = Column(String)
+    REGION = Column(String)
+    COMUNA = Column(String)
+
+    def to_dict(self):
+        return {
+            'ID': self.ID,
+            'NOMBRE': self.NOMBRE,
+            'RUT': self.RUT,
+            'CORREO': self.CORREO,
+            'CONTRASENA': self.CONTRASENA,  # Asegúrate de que quieres incluir esta información sensible.
+            'TIPO_PERFIL': self.TIPO_PERFIL,
+            'DIRECCION': self.DIRECCION,
+            'REGION': self.REGION,
+            'COMUNA': self.COMUNA
+        }
+
+# Create tables
+Base.metadata.create_all(bind=engine)
+
+
+# Dependency to get the database session
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+# Update existing endpoints to interact with SQLite via SQLAlchemy
+# Get all gatitos (GET)
 @api.route('/api/gatitos', methods=['GET'])
-def get_products():
-    return jsonify(gatitos)
-
-# Obtener un gatito por ID (GET)
+def get_gatitos():
+    db = next(get_db())
+    gatitos = db.query(Gatito).all()
+    gatitos_dict = [
+        {
+            "id": gatito.id,
+            "name": gatito.name,
+            "breed": gatito.breed,
+            "age": gatito.age,
+            "birthdate": gatito.birthdate,
+            "description": gatito.description
+        }
+        for gatito in gatitos
+    ]
+    return jsonify(gatitos_dict)
+# Get a gatito by ID (GET)
 @api.route('/api/gatitos/<int:gatitos_id>', methods=['GET'])
-def get_product(gatitos_id):
-    product = next((item for item in gatitos if item["id"] == gatitos_id), None)
-    if product:
-        return jsonify(product)
+def get_gatito(gatitos_id):
+    db = next(get_db())
+    gatito = db.query(Gatito).filter(Gatito.id == gatitos_id).first()
+    if gatito:
+        return jsonify(gatito.__dict__)
     else:
         return jsonify({"message": "Gatito no encontrado"}), 404
 
-# Agregar un nuevo gatito (POST)
 @api.route('/api/gatitos', methods=['POST'])
-def add_product():
-    new_product = request.json
-    new_product["id"] = max(gatito["id"] for gatito in gatitos) + 1  # Asigna un nuevo ID automáticamente
-    gatitos.append(new_product)
-    return jsonify({"message": "Gatito agregado correctamente", "gatito": new_product}), 201
+def add_gatito():
+    db = next(get_db())
+    new_gatito_data = request.json
+    new_gatito = Gatito(**new_gatito_data)
+    
+    try:
+        db.add(new_gatito)
+        db.commit()  # Asegúrate de que el commit esté aquí
+        db.refresh(new_gatito)
+        return jsonify({"message": "Gatito agregado correctamente", "gatito": new_gatito.to_dict()}), 201
+    except Exception as e:
+        db.rollback()
+        return jsonify({"message": "Error al agregar el gatito", "error": str(e)}), 500
+    finally:
+        db.close()
 
-# Actualizar un gatito existente (PUT)
-@api.route('/api/gatitos/<int:gatitos_id>', methods=['PUT'])
-def update_product(gatitos_id):
-    global gatitos
-    product = next((item for item in gatitos if item["id"] == gatitos_id), None)
-    if product:
-        updated_gatitos = request.json
-        product.update(updated_gatitos)
-        return jsonify({"message": "Gatito actualizado correctamente", "gatito": product})
+
+@api.route('/api/gatitos/<int:id>', methods=['PUT'])
+def update_gatito_endpoint(id):
+    db = next(get_db())
+    updated_data = request.json
+    
+    for attempt in range(5):  # Intenta hasta 5 veces
+        try:
+            gatito = db.query(Gatito).filter_by(id=id).first()
+            if gatito:
+                for key, value in updated_data.items():
+                    setattr(gatito, key, value)
+                db.commit()
+                return jsonify({"message": "Gatito actualizado correctamente"}), 200
+            else:
+                return jsonify({"error": "Gatito no encontrado"}), 404
+        except sqlalchemy.exc.OperationalError as e:
+            if "database is locked" in str(e):
+                time.sleep(1)  # Espera un segundo antes de reintentar
+                continue
+            else:
+                db.rollback()
+                return jsonify({"error": "Error al actualizar el gatito"}), 500
+        finally:
+            db.close()
+
+# Delete a gatito (DELETE)
+@api.route('/api/gatitos/<int:gatitos_id>', methods=['DELETE'])
+def delete_gatito(gatitos_id):
+    db = next(get_db())
+    gatito = db.query(Gatito).filter(Gatito.id == gatitos_id).first()
+    if gatito:
+        db.delete(gatito)
+        db.commit()
+        return jsonify({"message": "Gatito eliminado correctamente"})
     else:
         return jsonify({"message": "Gatito no encontrado"}), 404
 
-# Eliminar un gatito (DELETE)
-@api.route('/api/gatitos/<int:gatitos_id>', methods=['DELETE'])
-def delete_product(gatitos_id):
-    global gatitos
-    gatitos = [item for item in gatitos if item["id"] != gatitos_id]
-    return jsonify({"message": "Gatito eliminado correctamente", "gatitos": gatitos})
+# Get all profiles (GET)
+@api.route('/api/usuarios', methods=['GET'])
+def get_profiles():
+    db = next(get_db())
+    profiles = db.query(Profile).all()
+    return jsonify([profile.to_dict() for profile in profiles])
 
 
-# Ruta de inicio de sesión
+# Get a profile by ID (GET)
+@api.route('/api/usuarios/<int:profile_id>', methods=['GET'])
+def get_profile(profile_id):
+    db = next(get_db())
+    profile = db.query(Profile).filter(Profile.ID == profile_id).first()
+    if profile:
+        return jsonify(profile.to_dict())
+    else:
+        return jsonify({"message": "Perfil no encontrado"}), 404
+
+# Add a new profile (POST)
 @api.route('/api/usuarios', methods=['POST'])
-def login():
+def add_profile():
+    db = next(get_db())
+    new_profile_data = request.json
+    new_profile = Profile(**new_profile_data)
+    db.add(new_profile)
+    db.commit()
+    db.refresh(new_profile)
+    
+    # Convertir el objeto en un diccionario excluyendo atributos no serializables
+    profile_dict = {column.name: getattr(new_profile, column.name) for column in Profile.__table__.columns}
+    
+    return jsonify({"message": "Perfil agregado correctamente", "profile": profile_dict}), 201
+
+# Update an existing profile (PUT)
+@api.route('/api/usuarios/recover-password', methods=['PUT'])
+def recover_password():
+    data = request.json
+    correo = data.get('correo')
+    new_password = data.get('new_password')
+    
+    if not correo or not new_password:
+        return jsonify({"message": "Correo y nueva contraseña son requeridos", "success": False}), 400
+    
+    db = next(get_db())
+    try:
+        # Busca el perfil basado en el correo
+        profile = db.query(Profile).filter(Profile.CORREO == correo).first()
+        
+        if profile:
+            # Actualiza la contraseña del perfil encontrado
+            profile.CONTRASENA = new_password
+            db.commit()
+            db.refresh(profile)
+            return jsonify({"message": "Contraseña actualizada correctamente", "success": True})
+        else:
+            return jsonify({"message": "Correo no encontrado", "success": False}), 404
+    finally:
+        db.close()
+
+    return jsonify({"message": "Error al actualizar la contraseña", "success": False}), 500
+
+# Delete a profile (DELETE)
+@api.route('/api/usuarios/<int:profile_id>', methods=['DELETE'])
+def delete_profile(profile_id):
+    db = next(get_db())
+    profile = db.query(Profile).filter(Profile.ID == profile_id).first()
+    if profile:
+        db.delete(profile)
+        db.commit()
+        return jsonify({"message": "Perfil eliminado correctamente"})
+    else:
+        return jsonify({"message": "Perfil no encontrado"}), 404
+
+# Validate a user by email and password (POST)
+@api.route('/api/usuarios/validar', methods=['POST'])
+def validate_user():
+    db = next(get_db())
     data = request.json
     correo = data.get('CORREO')
     contrasena = data.get('CONTRASENA')
     
-    user = next((profile for profile in usuarios if profile["CORREO"] == correo and profile["CONTRASENA"] == contrasena), None)
-    
-    if user:
-        return jsonify({"message": "Inicio de sesión exitoso", "user": user}), 200
+    profile = db.query(Profile).filter(Profile.CORREO == correo, Profile.CONTRASENA == contrasena).first()
+    if profile:
+     return jsonify({"user": profile.to_dict()})
     else:
-        return jsonify({"message": "Error en inicio de sesión. Verifica tus credenciales."}), 401
+        return jsonify({"message": "Usuario no encontrado"}), 404
 
 
-# Ruta para registrar una nueva cuenta (POST)
-# Agregar un nuevo perfil (POST)
-@api.route('/api/usuarios', methods=['PUT'])
-def add_profile():
-    new_profile = request.json
-    
-    # Asigna un nuevo ID automáticamente
-    new_profile["ID"] = max(profile["ID"] for profile in usuarios) + 1 if usuarios else 1
-    
-    # Añade el nuevo perfil a la lista de perfiles
-    usuarios.append(new_profile)
-    
-    # Devuelve un mensaje de éxito junto con el perfil creado
-    return jsonify({"message": "Perfil agregado correctamente", "usuarios": new_profile}), 201
 
-# Ruta para recuperar contraseña (POST)
-@api.route('/api/usuarios', methods=['POST'])
-def recover_password():
-    data = request.json
-    correo = data.get('CORREO')
-    
-    # Buscar usuario por correo
-    user = next((profile for profile in usuarios if profile["CORREO"] == correo), None)
-    
-    if user:
-        # En una aplicación real, aquí se enviaría la contraseña al correo electrónico
-        return jsonify({"message": "Contraseña recuperada con éxito", "password": user["CONTRASENA"]}), 200
-    else:
-        return jsonify({"message": "Correo no encontrado"}), 404
 
-@api.route('/api/test', methods=['GET'])
-def test():
-    return jsonify({"message": "Ruta de prueba funcionando correctamente"})
-
-@api.route('/api/usuarios', methods=['GET'])
-def get_products2():
-    return jsonify(usuarios)
 
 if __name__ == '__main__':
     api.run(host='0.0.0.0', port=5000, debug=True)
